@@ -334,6 +334,10 @@ func generateCalendarGrid(month time.Time, postCounts map[string]int, white, bri
 	lastDay := firstDay.AddDate(0, 1, -1)
 	daysInMonth := lastDay.Day()
 
+	// Get current date for underlining
+	today := time.Now()
+	currentDateKey := today.Format("2006-01-02")
+
 	// Build calendar grid with proper alignment
 	day := 1
 	weekRow := 0
@@ -354,19 +358,36 @@ func generateCalendarGrid(month time.Time, postCounts map[string]int, white, bri
 				// Valid day in month
 				dateKey := time.Date(month.Year(), month.Month(), day, 0, 0, 0, 0, time.UTC).Format("2006-01-02")
 				count := postCounts[dateKey]
+				isToday := dateKey == currentDateKey
 
 				var dayStr string
 				if showCounts {
 					if count > 0 {
-						dayStr = brightGreen.Sprintf("%2d", count)
+						if isToday {
+							dayStr = brightGreen.Add(color.Underline).Sprintf("%2d", count)
+						} else {
+							dayStr = brightGreen.Sprintf("%2d", count)
+						}
 					} else {
-						dayStr = white.Sprintf(" 0")
+						if isToday {
+							dayStr = white.Add(color.Underline).Sprintf(" 0")
+						} else {
+							dayStr = white.Sprintf(" 0")
+						}
 					}
 				} else {
 					if count > 0 {
-						dayStr = brightGreen.Sprintf("%2d", day)
+						if isToday {
+							dayStr = brightGreen.Add(color.Underline).Sprintf("%2d", day)
+						} else {
+							dayStr = brightGreen.Sprintf("%2d", day)
+						}
 					} else {
-						dayStr = white.Sprintf("%2d", day)
+						if isToday {
+							dayStr = white.Add(color.Underline).Sprintf("%2d", day)
+						} else {
+							dayStr = white.Sprintf("%2d", day)
+						}
 					}
 				}
 				rowParts = append(rowParts, dayStr)
