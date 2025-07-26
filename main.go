@@ -26,11 +26,17 @@ type PostCount struct {
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("Usage: hugo-calendar <path-to-hugo-project>")
+		fmt.Println("Usage: hugo-calendar <path-to-hugo-project> [filter-text]")
+		fmt.Println("  filter-text: optional string to exclude posts containing this text in their body")
 		os.Exit(1)
 	}
 
 	projectPath := os.Args[1]
+	var filterText string
+	if len(os.Args) > 2 {
+		filterText = os.Args[2]
+	}
+
 	postsPath := filepath.Join(projectPath, "content", "posts")
 
 	// Check if posts directory exists
@@ -40,7 +46,7 @@ func main() {
 	}
 
 	// Parse all posts and count by date
-	postCounts, err := parsePostsAndCount(postsPath)
+	postCounts, err := parsePostsAndCount(postsPath, filterText)
 	if err != nil {
 		fmt.Printf("Error parsing posts: %v\n", err)
 		os.Exit(1)
@@ -55,7 +61,7 @@ func main() {
 	renderCalendars(postCounts)
 }
 
-func parsePostsAndCount(postsPath string) (map[string]int, error) {
+func parsePostsAndCount(postsPath, filterText string) (map[string]int, error) {
 	postCounts := make(map[string]int)
 
 	err := filepath.Walk(postsPath, func(path string, info os.FileInfo, err error) error {
@@ -65,14 +71,19 @@ func parsePostsAndCount(postsPath string) (map[string]int, error) {
 
 		// Look for index.md files
 		if info.Name() == "index.md" {
-			frontMatter, err := parseFrontMatter(path)
+			frontMatter, postBody, err := parsePostFile(path)
 			if err != nil {
-				fmt.Printf("Warning: Could not parse front matter in %s: %v\n", path, err)
+				fmt.Printf("Warning: Could not parse post file %s: %v\n", path, err)
 				return nil // Continue processing other files
 			}
 
 			// Skip draft posts
 			if frontMatter.Draft {
+				return nil
+			}
+
+			// Skip posts containing filter text in body
+			if filterText != "" && strings.Contains(postBody, filterText) {
 				return nil
 			}
 
@@ -87,15 +98,16 @@ func parsePostsAndCount(postsPath string) (map[string]int, error) {
 	return postCounts, err
 }
 
-func parseFrontMatter(filePath string) (*PostFrontMatter, error) {
+func parsePostFile(filePath string) (*PostFrontMatter, string, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	defer file.Close()
 
 	scanner := bufio.NewScanner(file)
 	var frontMatterLines []string
+	var bodyLines []string
 	var inFrontMatter bool
 	var frontMatterEnded bool
 
@@ -108,27 +120,30 @@ func parseFrontMatter(filePath string) (*PostFrontMatter, error) {
 				continue
 			} else {
 				frontMatterEnded = true
-				break
+				continue
 			}
 		}
 
-		if inFrontMatter {
+		if inFrontMatter && !frontMatterEnded {
 			frontMatterLines = append(frontMatterLines, line)
+		} else if frontMatterEnded {
+			bodyLines = append(bodyLines, line)
 		}
 	}
 
 	if !frontMatterEnded {
-		return nil, fmt.Errorf("front matter not properly closed")
+		return nil, "", fmt.Errorf("front matter not properly closed")
 	}
 
 	frontMatterYAML := strings.Join(frontMatterLines, "\n")
 	var frontMatter PostFrontMatter
 	err = yaml.Unmarshal([]byte(frontMatterYAML), &frontMatter)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
-	return &frontMatter, nil
+	postBody := strings.Join(bodyLines, "\n")
+	return &frontMatter, postBody, nil
 }
 
 func renderCalendars(postCounts map[string]int) {
