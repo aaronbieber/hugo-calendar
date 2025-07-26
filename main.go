@@ -7,7 +7,9 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
+	"unsafe"
 
 	"github.com/fatih/color"
 	"gopkg.in/yaml.v3"
@@ -69,6 +71,28 @@ func parseArgs() (*Config, error) {
 	}
 
 	return config, nil
+}
+
+func getTerminalWidth() int {
+	type winsize struct {
+		Row    uint16
+		Col    uint16
+		Xpixel uint16
+		Ypixel uint16
+	}
+
+	ws := &winsize{}
+	retCode, _, errno := syscall.Syscall(syscall.SYS_IOCTL,
+		uintptr(syscall.Stdin),
+		uintptr(syscall.TIOCGWINSZ),
+		uintptr(unsafe.Pointer(ws)))
+
+	if int(retCode) == -1 || errno != 0 {
+		// Terminal width not available (pipe, non-interactive, etc.)
+		return 80
+	}
+
+	return int(ws.Col)
 }
 
 func main() {
@@ -228,10 +252,15 @@ func renderCalendars(postCounts map[string]int, showCounts bool) {
 }
 
 func renderCalendarGrid(months []time.Time, postCounts map[string]int, showCounts bool) {
-	// Calculate terminal width (approximation - each calendar is 20 chars wide + 2 chars padding)
-	const calendarWidth = 22
-	const terminalWidth = 120 // Assume reasonable terminal width
+	// Calculate terminal width and calendars per row
+	const calendarWidth = 22 // Each calendar is 20 chars wide + 2 chars padding
+	terminalWidth := getTerminalWidth()
 	calendarsPerRow := terminalWidth / calendarWidth
+
+	// Ensure at least one calendar per row
+	if calendarsPerRow < 1 {
+		calendarsPerRow = 1
+	}
 
 	white := color.New(color.FgWhite)
 	brightGreen := color.New(color.FgHiGreen, color.Bold)
