@@ -24,20 +24,65 @@ type PostCount struct {
 	Count int
 }
 
+type Config struct {
+	ProjectPath string
+	FilterText  string
+	ShowCounts  bool
+}
+
+func parseArgs() (*Config, error) {
+	config := &Config{}
+	args := os.Args[1:]
+
+	if len(args) == 0 {
+		return nil, fmt.Errorf("missing project path")
+	}
+
+	i := 0
+	for i < len(args) {
+		arg := args[i]
+
+		if arg == "-f" || arg == "--filter" {
+			if i+1 >= len(args) {
+				return nil, fmt.Errorf("filter flag requires a value")
+			}
+			config.FilterText = args[i+1]
+			i += 2
+		} else if arg == "-c" || arg == "--counts" {
+			config.ShowCounts = true
+			i++
+		} else if strings.HasPrefix(arg, "-") {
+			return nil, fmt.Errorf("unknown flag: %s", arg)
+		} else {
+			// This should be the project path
+			if config.ProjectPath == "" {
+				config.ProjectPath = arg
+				i++
+			} else {
+				return nil, fmt.Errorf("unexpected argument: %s", arg)
+			}
+		}
+	}
+
+	if config.ProjectPath == "" {
+		return nil, fmt.Errorf("missing project path")
+	}
+
+	return config, nil
+}
+
 func main() {
-	if len(os.Args) < 2 {
-		fmt.Println("Usage: hugo-calendar <path-to-hugo-project> [filter-text]")
-		fmt.Println("  filter-text: optional string to exclude posts containing this text in their body")
+	config, err := parseArgs()
+	if err != nil {
+		fmt.Printf("Error: %v\n\n", err)
+		fmt.Println("Usage: hugo-calendar <path-to-hugo-project> [options]")
+		fmt.Println("Options:")
+		fmt.Println("  -f, --filter TEXT    Exclude posts containing TEXT in their body")
+		fmt.Println("  -c, --counts         Show post counts instead of day numbers")
 		os.Exit(1)
 	}
 
-	projectPath := os.Args[1]
-	var filterText string
-	if len(os.Args) > 2 {
-		filterText = os.Args[2]
-	}
-
-	postsPath := filepath.Join(projectPath, "content", "posts")
+	postsPath := filepath.Join(config.ProjectPath, "content", "posts")
 
 	// Check if posts directory exists
 	if _, err := os.Stat(postsPath); os.IsNotExist(err) {
@@ -46,7 +91,7 @@ func main() {
 	}
 
 	// Parse all posts and count by date
-	postCounts, err := parsePostsAndCount(postsPath, filterText)
+	postCounts, err := parsePostsAndCount(postsPath, config.FilterText)
 	if err != nil {
 		fmt.Printf("Error parsing posts: %v\n", err)
 		os.Exit(1)
@@ -58,7 +103,7 @@ func main() {
 	}
 
 	// Render calendar
-	renderCalendars(postCounts)
+	renderCalendars(postCounts, config.ShowCounts)
 }
 
 func parsePostsAndCount(postsPath, filterText string) (map[string]int, error) {
@@ -146,7 +191,7 @@ func parsePostFile(filePath string) (*PostFrontMatter, string, error) {
 	return &frontMatter, postBody, nil
 }
 
-func renderCalendars(postCounts map[string]int) {
+func renderCalendars(postCounts map[string]int, showCounts bool) {
 	// Find date range
 	var dates []time.Time
 	for dateStr := range postCounts {
@@ -179,10 +224,10 @@ func renderCalendars(postCounts map[string]int) {
 	}
 
 	// Render calendars in rows
-	renderCalendarGrid(months, postCounts)
+	renderCalendarGrid(months, postCounts, showCounts)
 }
 
-func renderCalendarGrid(months []time.Time, postCounts map[string]int) {
+func renderCalendarGrid(months []time.Time, postCounts map[string]int, showCounts bool) {
 	// Calculate terminal width (approximation - each calendar is 20 chars wide + 2 chars padding)
 	const calendarWidth = 22
 	const terminalWidth = 120 // Assume reasonable terminal width
@@ -223,7 +268,7 @@ func renderCalendarGrid(months []time.Time, postCounts map[string]int) {
 		maxRows := 0
 
 		for idx, month := range rowMonths {
-			grid := generateCalendarGrid(month, postCounts, white, brightGreen)
+			grid := generateCalendarGrid(month, postCounts, white, brightGreen, showCounts)
 			calendarGrids[idx] = grid
 			if len(grid) > maxRows {
 				maxRows = len(grid)
@@ -249,7 +294,7 @@ func renderCalendarGrid(months []time.Time, postCounts map[string]int) {
 	}
 }
 
-func generateCalendarGrid(month time.Time, postCounts map[string]int, white, brightGreen *color.Color) []string {
+func generateCalendarGrid(month time.Time, postCounts map[string]int, white, brightGreen *color.Color, showCounts bool) []string {
 	var grid []string
 
 	// First day of month and its weekday
@@ -271,21 +316,39 @@ func generateCalendarGrid(month time.Time, postCounts map[string]int, white, bri
 		for col := 0; col < 7; col++ {
 			if weekRow == 0 && col < startWeekday {
 				// Empty cell before month starts
-				rowParts = append(rowParts, "  ")
+				if showCounts {
+					rowParts = append(rowParts, "  ")
+				} else {
+					rowParts = append(rowParts, "  ")
+				}
 			} else if day <= daysInMonth {
 				// Valid day in month
 				dateKey := time.Date(month.Year(), month.Month(), day, 0, 0, 0, 0, time.UTC).Format("2006-01-02")
+				count := postCounts[dateKey]
+
 				var dayStr string
-				if postCounts[dateKey] > 0 {
-					dayStr = brightGreen.Sprintf("%2d", day)
+				if showCounts {
+					if count > 0 {
+						dayStr = brightGreen.Sprintf("%2d", count)
+					} else {
+						dayStr = white.Sprintf(" 0")
+					}
 				} else {
-					dayStr = white.Sprintf("%2d", day)
+					if count > 0 {
+						dayStr = brightGreen.Sprintf("%2d", day)
+					} else {
+						dayStr = white.Sprintf("%2d", day)
+					}
 				}
 				rowParts = append(rowParts, dayStr)
 				day++
 			} else {
 				// Empty cell after month ends
-				rowParts = append(rowParts, "  ")
+				if showCounts {
+					rowParts = append(rowParts, "  ")
+				} else {
+					rowParts = append(rowParts, "  ")
+				}
 			}
 		}
 
