@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(go:*)"
+      "Bash(go:*)",
+      "Bash(./hugo-calendar --help)",
+      "Bash(./hugo-calendar . -m invalid-date)",
+      "Bash(./hugo-calendar:*)"
     ],
     "deny": [],
     "ask": []

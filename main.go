@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -30,6 +29,7 @@ type Config struct {
 	ProjectPath string
 	FilterText  string
 	ShowCounts  bool
+	Month       *string // YYYY-MM format, nil means all months
 }
 
 func parseArgs() (*Config, error) {
@@ -53,6 +53,18 @@ func parseArgs() (*Config, error) {
 		} else if arg == "-c" || arg == "--counts" {
 			config.ShowCounts = true
 			i++
+		} else if arg == "-m" || arg == "--month" {
+			// Check if next arg exists and is not a flag
+			if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+				month := args[i+1]
+				config.Month = &month
+				i += 2
+			} else {
+				// No value provided, use current month
+				currentMonth := time.Now().Format("2006-01")
+				config.Month = &currentMonth
+				i++
+			}
 		} else if strings.HasPrefix(arg, "-") {
 			return nil, fmt.Errorf("unknown flag: %s", arg)
 		} else {
@@ -68,6 +80,13 @@ func parseArgs() (*Config, error) {
 
 	if config.ProjectPath == "" {
 		return nil, fmt.Errorf("missing project path")
+	}
+
+	// Validate month format if provided
+	if config.Month != nil {
+		if _, err := time.Parse("2006-01", *config.Month); err != nil {
+			return nil, fmt.Errorf("invalid month format '%s', expected YYYY-MM", *config.Month)
+		}
 	}
 
 	return config, nil
@@ -103,6 +122,7 @@ func main() {
 		fmt.Println("Options:")
 		fmt.Println("  -f, --filter TEXT    Exclude posts containing TEXT in their body")
 		fmt.Println("  -c, --counts         Show post counts instead of day numbers")
+		fmt.Println("  -m, --month YYYY-MM  Show only the specified month (default: current month)")
 		os.Exit(1)
 	}
 
@@ -127,7 +147,7 @@ func main() {
 	}
 
 	// Render calendar
-	renderCalendars(postCounts, config.ShowCounts)
+	renderCalendars(postCounts, config.ShowCounts, config.Month)
 }
 
 func parsePostsAndCount(postsPath, filterText string) (map[string]int, error) {
@@ -215,36 +235,54 @@ func parsePostFile(filePath string) (*PostFrontMatter, string, error) {
 	return &frontMatter, postBody, nil
 }
 
-func renderCalendars(postCounts map[string]int, showCounts bool) {
-	// Find date range
-	var dates []time.Time
-	for dateStr := range postCounts {
-		date, err := time.Parse("2006-01-02", dateStr)
-		if err != nil {
-			continue
-		}
-		dates = append(dates, date)
-	}
-
-	if len(dates) == 0 {
-		return
-	}
-
-	sort.Slice(dates, func(i, j int) bool {
-		return dates[i].Before(dates[j])
-	})
-
-	minDate := dates[0]
-	maxDate := dates[len(dates)-1]
-
-	// Generate all months in range
+func renderCalendars(postCounts map[string]int, showCounts bool, monthFilter *string) {
 	var months []time.Time
-	current := time.Date(minDate.Year(), minDate.Month(), 1, 0, 0, 0, 0, time.UTC)
-	end := time.Date(maxDate.Year(), maxDate.Month(), 1, 0, 0, 0, 0, time.UTC)
 
-	for !current.After(end) {
-		months = append(months, current)
-		current = current.AddDate(0, 1, 0)
+	if monthFilter != nil {
+		// Single month mode - parse the target month
+		targetMonth, err := time.Parse("2006-01", *monthFilter)
+		if err != nil {
+			fmt.Printf("Error parsing month filter: %v\n", err)
+			return
+		}
+		months = append(months, time.Date(targetMonth.Year(), targetMonth.Month(), 1, 0, 0, 0, 0, time.UTC))
+	} else {
+		// Original behavior - show all months with posts
+		// Find date range
+		var dates []time.Time
+		for dateStr := range postCounts {
+			date, err := time.Parse("2006-01-02", dateStr)
+			if err != nil {
+				continue
+			}
+			dates = append(dates, date)
+		}
+
+		if len(dates) == 0 {
+			return
+		}
+
+		// Need to import sort for this
+		// Find min and max dates
+		minDate := dates[0]
+		maxDate := dates[0]
+		for _, date := range dates {
+			if date.Before(minDate) {
+				minDate = date
+			}
+			if date.After(maxDate) {
+				maxDate = date
+			}
+		}
+
+		// Generate all months in range
+		current := time.Date(minDate.Year(), minDate.Month(), 1, 0, 0, 0, 0, time.UTC)
+		end := time.Date(maxDate.Year(), maxDate.Month(), 1, 0, 0, 0, 0, time.UTC)
+
+		for !current.After(end) {
+			months = append(months, current)
+			current = current.AddDate(0, 1, 0)
+		}
 	}
 
 	// Render calendars in rows
