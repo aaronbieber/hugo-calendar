@@ -402,13 +402,13 @@ func generateCalendarGrid(month time.Time, postCounts map[string]int, white, bri
 				if showCounts {
 					if count > 0 {
 						if isToday {
-							dayStr = color.New(color.FgHiGreen, color.Underline).Sprintf("%2d", count)
+							dayStr = color.New(color.FgBlack, color.BgWhite).Sprintf("%2d", count)
 						} else {
 							dayStr = brightGreen.Sprintf("%2d", count)
 						}
 					} else {
 						if isToday {
-							dayStr = color.New(color.FgWhite, color.Underline).Sprintf(" 0")
+							dayStr = color.New(color.FgBlack, color.BgWhite).Sprintf(" 0")
 						} else {
 							dayStr = white.Sprintf(" 0")
 						}
@@ -416,13 +416,13 @@ func generateCalendarGrid(month time.Time, postCounts map[string]int, white, bri
 				} else {
 					if count > 0 {
 						if isToday {
-							dayStr = color.New(color.FgHiGreen, color.Underline).Sprintf("%2d", day)
+							dayStr = color.New(color.FgBlack, color.BgWhite).Sprintf("%2d", day)
 						} else {
 							dayStr = brightGreen.Sprintf("%2d", day)
 						}
 					} else {
 						if isToday {
-							dayStr = color.New(color.FgWhite, color.Underline).Sprintf("%2d", day)
+							dayStr = color.New(color.FgBlack, color.BgWhite).Sprintf("%2d", day)
 						} else {
 							dayStr = white.Sprintf("%2d", day)
 						}
