@@ -1,2 +1,2 @@
 build:
-    go build -o hugo-calendar
+    go build -o bin/hugo-calendar
